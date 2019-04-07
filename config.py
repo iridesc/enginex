@@ -11,6 +11,4 @@ def config():
     json.dump(data,open('setting.json','w'),)
     print('enginex config done!')
 if __name__ == '__main__':
-
-    
     config
