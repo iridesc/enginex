@@ -1,8 +1,8 @@
 {
-  "enginename": "E 1",
-  "password": "iridescent256938004",
-  "host": "127.0.0.1",
-  "port": 23333,
-  "processnumber": 5,
-  "decorator": " \u4e0b\u8f7d"
+    "enginename": "E0",
+    "password": "iridescent256938004",
+    "host": "127.0.0.1",
+    "port": 23333,
+    "processnumber": "16",
+    "decorator": " 下载"
 }
