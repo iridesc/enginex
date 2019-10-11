@@ -12,7 +12,7 @@ from multiprocessing.managers import BaseManager
 
 # #################### E setting #####################
 # process pool 超时
-TIMEOUT = 10
+
 UA = [
     'User-Agent,Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_8; en-us) AppleWebKit/534.50 (KHTML, like Gecko) Version/5.1 Safari/534.50',
     'User-Agent,Mozilla/5.0 (Windows; U; Windows NT 6.1; en-us) AppleWebKit/534.50 (KHTML, like Gecko) Version/5.1 Safari/534.50',
@@ -25,6 +25,9 @@ UA = [
     'User-Agent, Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; Trident/4.0; SE 2.X MetaSr 1.0; SE 2.X MetaSr 1.0; .NET CLR 2.0.50727; SE 2.X MetaSr 1.0)',
     'User-Agent, Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; 360SE)',
 ]
+TIMEOUT = 10
+TIMES = 0
+TIMER = 0
 # #################### E setting end #####################
 
 
@@ -63,16 +66,17 @@ def makelog(log):
     )
 
 
-def inittask(task):
-    task['keyword'] = None
-    task['page'] = None
-    task['progress'] = 0
-    task['done'] = False
-    task['reslist'] = []
-    return task
+def inittask(TASKCONTAINER):
+    TASKCONTAINER['keyword'] = None
+    TASKCONTAINER['page'] = None
+    TASKCONTAINER['progress'] = 0
+    TASKCONTAINER['done'] = False
+    TASKCONTAINER['weblink_code'] = []
+    TASKCONTAINER['reslist'] = []
+    return TASKCONTAINER
 
 
-def resourceworm(xlist):
+def getsourcecode(xlist):
     @retry(delay=2, tries=3)
     def net(link):
         head = {
@@ -83,10 +87,9 @@ def resourceworm(xlist):
         return r
 
     weblink = xlist[0]
-    task = xlist[1]
+    TASKCONTAINER = xlist[1]
 
     # 获取页面html
-    webhtml = ''
     try:
         n = 0
         status_code = 302
@@ -95,55 +98,38 @@ def resourceworm(xlist):
             status_code = r.status_code
             if status_code in [301, 302]:
                 weblink = r.headers['location']
-                n = n+1
+                n = n + 1
             else:
                 r.encoding = r.apparent_encoding
-                webhtml = r.text
+                # 收集网页源码
+                TASKCONTAINER_weblink_code = TASKCONTAINER['weblink_code']
+                TASKCONTAINER_weblink_code.append([weblink, r.text])
+                TASKCONTAINER['weblink_code'] = TASKCONTAINER_weblink_code
     except:
         pass
-
-    if webhtml != '':
-        # 获取html资源
-        bd_r = re.compile(r'''pan\.baidu\.com[/\\]\S+?(?=['"“”‘’《》<>,，；;])''')
-        th_r = re.compile(
-            r'''thunder://[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=]+''')
-        ed_r = re.compile(r'''ed2k://[\s\S]+?(?:[/])''')
-        magnet_r = re.compile(r'''magnet:\?\S+?(?=['"“”‘’《》<>$()（）：])''')
-        # print('提取资源')
-        th = th_r.findall(webhtml)
-        ed = ed_r.findall(webhtml)
-        magnet = magnet_r.findall(webhtml)
-        bd = bd_r.findall(webhtml)
-        # print('提取成功')
-        for i in th:
-            if len(i) < 800:
-                l = task['reslist']
-                l.append([i, weblink, 'thunder'])
-                task['reslist'] = l
-        for i in ed:
-            if len(i) < 800:
-                l = task['reslist']
-                l.append([i, weblink, 'ed2k'])
-                task['reslist'] = l
-        for i in magnet:
-            if len(i) < 800:
-                l = task['reslist']
-                l.append([i, weblink, 'magnet'])
-                task['reslist'] = l
-        for i in bd:
-            if len(i) < 800:
-                l = task['reslist']
-                l.append([i, weblink, 'baidu'])
-                task['reslist'] = l
     # 更新statu
-    task['progress'] = 2 + task['progress']
+    TASKCONTAINER['progress'] = 2 + TASKCONTAINER['progress']
 
 
-def cpu(task, pn):
+def loaddetting():
+    global ENGINENAME, PASSWORD, HOST, PORT, PROCESSAMOUNT, DECORATOR, UNITAMOUNT
+    with open('./setting.json') as f:
+        setting = json.load(f)
+    ENGINENAME = setting['enginename']
+    PASSWORD = setting['password']
+    HOST = setting['host']
+    PORT = setting['port']
+    PROCESSAMOUNT = int(setting['processnumber'])
+    UNITAMOUNT = 2
+    DECORATOR = setting['decorator']
+
+
+def processor():
+    
     def getweblink(skey, page):
         # get baidu html
         url = 'http://www.baidu.com/s?'
-        aa = {'wd': skey, 'pn': int(page) * 50, 'rn': 50}
+        aa = {'wd': skey, 'process_number': int(page) * 50, 'rn': 50}
 
         head = {
             'User-Agent': random.choice(UA)
@@ -161,66 +147,117 @@ def cpu(task, pn):
         # 获取链接
         return [BeautifulSoup(str(n), "html.parser").a['href'] for n in tag]
 
-    while True:
-        if task['keyword'] != None and not task['done']:
-            keyword = task['keyword']
-            page = task['page']
-            makelog('new task:{} - {}'.format(keyword, page))
+    def parseres(TASKCONTAINER):
+        # 匹配表达式
+        bd_r = re.compile(
+            r'''pan\.baidu\.com[/\\]\S+?(?=['"“”‘’《》<>,，；;])''')
+        th_r = re.compile(
+            r'''thunder://[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=]+''')
+        ed_r = re.compile(r'''ed2k://[\s\S]+?(?:[/])''')
+        magnet_r = re.compile(r'''magnet:\?\S+?(?=['"“”‘’《》<>$()（）：])''')
+        for weblink_code in TASKCONTAINER['weblink_code']:
+            weblink = weblink_code[0]
+            source_code = weblink_code[1]
+            # 匹配资源 并 收录
+            for res_container in [
+                [th_r.findall(source_code), 'thunder'],
+                [ed_r.findall(source_code), 'ed2k'],
+                [magnet_r.findall(source_code), 'magnet'],
+                [bd_r.findall(source_code), 'baidu']
+            ]:
+                for res in res_container[0]:
+                    if len(res) < 800:
+                        l = TASKCONTAINER['reslist']
+                        l.append([res, weblink, res_container[1]])
+                        TASKCONTAINER['reslist'] = l
 
+    global DECORATOR,TASKCONTAINER,PROCESSAMOUNT
+    while True:
+        if TASKCONTAINER['keyword'] != None and not TASKCONTAINER['done']:
+            
+            keyword = TASKCONTAINER['keyword']
+            page = TASKCONTAINER['page']
+            makelog('new task:{} - {}'.format(keyword, page))
+            
             # 获取weblink
-            weblinklist = getweblink(keyword + decorator, page)
+            weblink_list = getweblink(keyword + DECORATOR, page)
+        
+            
             # 建立并开始wprmpool
-            webworm_pool = Pool(pn)
-            spsset = webworm_pool.map_async(func=resourceworm,
-                                            iterable=[[link, task] for link in weblinklist])
-            webworm_pool.close()
+            web_worm_pool = Pool(PROCESSAMOUNT)
+            spsset = web_worm_pool.map_async(
+                func=getsourcecode,
+                iterable=[[link, TASKCONTAINER] for link in weblink_list]
+            )
+            web_worm_pool.close()
+
             # 检查是否超时
             try:
                 spsset.get(timeout=TIMEOUT)
             except:
-                webworm_pool.terminate()
-            task['done'] = True
+                web_worm_pool.terminate()
+
+            # for xlist in [[link, TASKCONTAINER] for link in weblink_list]:
+            #     getsourcecode(xlist)
+            
+      
+
+            # 解析资源 标记完成
+            parseres(TASKCONTAINER)
+            TASKCONTAINER['done'] = True
 
         else:
-            time.sleep(1)
+            time.sleep(0.1)
 
 
-def bootloader(enginename, task, cache):
+def syner():
+    global CACHE, ENGINENAME, TASKCONTAINER, ET, ST,TIMER,TIMES
+    ET=0
     checktime = 0
     progressrecoder = 0
     while True:
-        # 两秒交互一次
+        # 0.5交互一次
         t0 = time.time()
-        if t0 - checktime > 2:
+        if t0 - checktime > 0.5:
             checktime = time.time()
 
             # 任务完成 上传数据
-            if task['done']:
+            if TASKCONTAINER['done']:
                 sucess = False
                 while not sucess:
-                    cache.postres(
-                        enginename, task['keyword'], task['page'], task['reslist'])
+                    CACHE.postres(
+                        ENGINENAME, TASKCONTAINER['keyword'], TASKCONTAINER['page'], TASKCONTAINER['reslist'])
                     # 重置task
-                    task = inittask(task)
+                    TASKCONTAINER = inittask(TASKCONTAINER)
                     sucess = True
+                
+               
+                ET = time.time() - ST
+                TIMER += ET
+                TIMES +=1
+                
+                print('Preformance:{}'.format(TIMER/TIMES))
+
 
             # gettask
-            elif task['keyword'] == None:
+            elif TASKCONTAINER['keyword'] == None:
+        
+                ST = time.time()
 
-                kid = cache.gettask(enginename)
+                kid = CACHE.gettask(ENGINENAME)
                 if kid != None:
-                    task['keyword'] = kid.keyword
-                    task['page'] = kid.page
+                    TASKCONTAINER['keyword'] = kid.keyword
+                    TASKCONTAINER['page'] = kid.page
 
             # updatestatu
-            elif task['progress'] != progressrecoder:
+            elif TASKCONTAINER['progress'] != progressrecoder:
 
-                cache.updateprogress(
-                    enginename, task['keyword'], task['page'], task['progress'])
+                CACHE.updateprogress(
+                    ENGINENAME, TASKCONTAINER['keyword'], TASKCONTAINER['page'], TASKCONTAINER['progress'])
 
             # 啥事都没有则打卡
             else:
-                cache.activeengine(enginename)
+                CACHE.activeengine(ENGINENAME)
 
         else:
             time.sleep(0.2)
@@ -234,52 +271,56 @@ if __name__ == '__main__':
             try:
                 starttime = time.time()
 
-                # setting
-                with open('./setting.json') as f:
-                    setting = json.load(f)
-
-                enginename = setting['enginename']
-                password = setting['password']
-                host = setting['host']
-                port = setting['port']
-                pn = int(setting['processnumber'])
-                decorator = setting['decorator']
-                makelog('load setting success:\n' +
-                        'host:' + host + '\nengineneme:' + enginename + '\npassword:' + str(password) +
-                        '\nprocess:' +
-                        str(pn) +
-                        '\ndecorator:' +
-                        decorator)
+                # 载入设置
+                loaddetting()
+                makelog(
+                    'load setting success:\n' +
+                    'host:' + HOST +
+                    '\nengineneme:' + ENGINENAME +
+                    '\npassword:' + PASSWORD +
+                    '\nprocess:' + str(PROCESSAMOUNT) +
+                    '\ndecorator:' + DECORATOR
+                )
 
                 # 连接到服务器
                 cachemanager.register('cacheobj')
                 manager = cachemanager(
-                    address=(host, port), authkey=bytes(password, encoding='utf8'))
+                    address=(HOST, PORT),
+                    authkey=bytes(PASSWORD, encoding='utf8')
+                )
                 manager.connect()
-                cache = manager.cacheobj()
+                global CACHE, TASKCONTAINER
+                CACHE = manager.cacheobj()
 
                 # 获得一个ManagerDict对象 并初始化
-                task = inittask(Manager().dict())
+                TASKCONTAINER = inittask(Manager().dict())
+
                 # 定义引导进程 和 处理单元进程
-                bootloader_P = Process(
-                    target=bootloader, args=(enginename, task, cache,))
-                cpu_P = Process(target=cpu, args=(task, pn,))
+                syner_process = Process(target=syner)
+                processor_process = Process(target=processor)
+
                 # 启动进程
-                bootloader_P.start()
-                cpu_P.start()
+                syner_process.start()
+                processor_process.start()
                 makelog('boot process success')
                 # 进程检测
                 while True:
-                    if bootloader_P.is_alive() and cpu_P.is_alive():
-                        time.sleep(1)
+                    if syner_process.is_alive() and processor_process.is_alive():
+                        time.sleep(2)
+                    elif not syner_process.is_alive():
+                        syner_process.terminate()
+                        makelog('syner_process down! reboot  process now!\n')
+                        syner_process = Process(target=syner,)
+                        syner_process.start()
                     else:
-                        bootloader_P.terminate()
-                        cpu_P.terminate()
-                        makelog('process down! reboot now!\n')
-                        break
+                        processor_process.terminate()
+                        makelog('processor_process down! reboot process now!\n')
+                        processor_process = Process(target=processor)
+                        processor_process.start()
 
             except Exception as e:
-                makelog('Exception in mainprocess!\n' + str(e))
+                makelog('Exception in main process! reboot now！\n' + str(e))
+                raise
 
         else:
             time.sleep(1)
