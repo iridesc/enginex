@@ -129,7 +129,7 @@ class SubTask:
         # makelog('SubTask inited:{}'.format(self.task_type))
 
     def do(self):
-        @retry(delay=2, tries=3)
+        @retry(tries=2)
         def net(link, params=None, allow_redirects=True):
             UA = [
                 'User-Agent,Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_8; en-us) AppleWebKit/534.50 (KHTML, like Gecko) Version/5.1 Safari/534.50',
@@ -150,7 +150,7 @@ class SubTask:
             r = requests.get(
                 link,
                 headers=head,
-                timeout=10,
+                timeout=5,
                 params=params,
                 allow_redirects=allow_redirects
             )
@@ -163,7 +163,7 @@ class SubTask:
                 try:
                     n = 0
                     status_code = 302
-                    while status_code in [302, 301] and n < 4:
+                    while status_code in [302, 301] and n < 3:
                         r = net(self.link, allow_redirects=False)
                         status_code = r.status_code
                         if status_code in [301, 302]:
@@ -175,12 +175,11 @@ class SubTask:
                             sourcecode = r.text
                 except:
                     pass
+
                 return sourcecode
 
             def get_rawres(sourcecode):
                 # 匹配表达式
-                bd_r = re.compile(
-                    r'''pan\.baidu\.com[/\\]\S+?(?=['"“”‘’《》<>,，；;])''')
                 th_r = re.compile(
                     r'''thunder://[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=]+''')
                 ed_r = re.compile(r'''ed2k://[\s\S]+?(?:[/])''')
@@ -193,7 +192,6 @@ class SubTask:
                     [th_r.findall(sourcecode), 'thunder'],
                     [ed_r.findall(sourcecode), 'ed2k'],
                     [magnet_r.findall(sourcecode), 'magnet'],
-                    [bd_r.findall(sourcecode), 'baidu']
                 ]:
                     for reslink in res_container[0]:
                         if len(reslink) < 800:
@@ -205,12 +203,13 @@ class SubTask:
                                     res_container[1])
                             )
                 return rawres_list
-
+            st=time.time()
             sourcecode = get_source_code()
             rawres_list = get_rawres(sourcecode)
             # 找到任务并放入rawres
             CACHE.rawres_upload(self.keyword, rawres_list)
-            # makelog('SubTask Done!  {}'.format(self.keyword))
+            # now_time=time.time()
+            # makelog('MiniTask Done!  {} con_time:{} total_time:{}'.format(self.keyword,now_time-t,now_time-st,))
 
         def parsetask():
             def get_tags():
