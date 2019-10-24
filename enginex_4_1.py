@@ -2,11 +2,13 @@
 import os
 import time
 import json
+import base64
 import random
 import requests
 import traceback
 from bs4 import BeautifulSoup
 from retry import retry
+from urllib import parse
 # from guppy import hpy
 from multiprocessing import Pool, Queue, TimeoutError, cpu_count
 from multiprocessing.managers import BaseManager
@@ -21,7 +23,7 @@ class RawRes:
         self.filename = None
         self.filesize = 0
 
-    def reslinkparser(self, parselink):
+    def reslinkparser(self):
         def base64decode(link):
             link = link.split('//')[1]
             example = base64.b64decode(link)
@@ -32,7 +34,7 @@ class RawRes:
                 except:
                     pass
 
-        parselink = parse.unquote(parselink)
+        parselink = parse.unquote(self.reslink)
         t = parselink.split(':')[0]
         filename = None
         size = 0
@@ -57,8 +59,10 @@ class RawRes:
                 size = int(infolist[3])
             elif t == 'thunder':
                 filename, size = reslinkparser(base64decode(parselink))
+            else:
+                makelog('Unknow Res Type:{}'.format(t))
 
-        except Exception as e:
+        except:
             pass
         self.filename = filename
         self.filesize = size / 1024 ** 2
@@ -102,6 +106,8 @@ class Task:
                 filesize=rawres.filesize
             )
 
+        # 更新 task 最后一次活跃时间
+        self.last_active_time = time.time()
         # 更新状态和进度
         self.subtask_done_counter += 1
         self.progress = self.subtask_done_counter*100/self.subtask_total_counter
@@ -195,15 +201,20 @@ class SubTask:
                 ]:
                     for reslink in res_container[0]:
                         if len(reslink) < 800:
-                            rawres_list.append(
-                                RawRes(
-                                    self.keyword,
+                            raw_res = RawRes(
+                                self.keyword,
                                     reslink,
                                     self.link,
-                                    res_container[1])
+                                    res_container[1]
+                                    )
+                            # 补全信息
+                            raw_res.reslinkparser()
+                            # 加入列表
+                            rawres_list.append(
+                                raw_res
                             )
                 return rawres_list
-            st=time.time()
+            # st=time.time()
             sourcecode = get_source_code()
             rawres_list = get_rawres(sourcecode)
             # 找到任务并放入rawres
