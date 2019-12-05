@@ -3,5 +3,5 @@
     "Password": "iridescent256938004",
     "Host": "0.0.0.0",
     "Port": 23333,
-    "ProcessOverride": "2"
+    "ProcessOverride": 2.0
 }
