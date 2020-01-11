@@ -7,13 +7,14 @@ import random
 import requests
 import traceback
 from bs4 import BeautifulSoup
+from initManager import initManager
 from retry import retry
 from urllib import parse
 from psearcher import Bing
 from loger import makelog,setting
 from multiprocessing import Pool, Queue, TimeoutError, cpu_count
 from multiprocessing.managers import BaseManager
-setting(2)
+setting(4)
 
 
 class RawRes:
@@ -254,9 +255,6 @@ class SubTask:
             makelog('Error unknow task{}'.format(self.task_type),1)
 
 
-class cachemanager(BaseManager):
-    pass
-
 
 
 def loaddetting():
@@ -314,6 +312,8 @@ def subtask_pool_fuc(subtask):
     subtask.do()
 
 
+
+
 if __name__ == '__main__':
     # 载入设置
     loaddetting()
@@ -321,14 +321,9 @@ if __name__ == '__main__':
         makelog('Enginex 4.3 start !',2)
         try:
             # 连接到服务器
-            cachemanager.register('cacheobj')
-            manager = cachemanager(
-                address=(HOST, PORT),
-                authkey=bytes(PASSWORD, encoding='utf8')
-            )
-            manager.connect()
-            CACHE = manager.cacheobj()
-            makelog('Manager-x connected !',2)
+            CACHE = initManager(host=HOST,port=PORT,password=PASSWORD)
+            makelog('Manager-x connected !', 2)
+            
             # 建立进程池
             task_pool = Pool(processes=PROCESSAMOUNT, maxtasksperchild=1)
             # 建立一个结果清理队列
