@@ -14,7 +14,7 @@ from psearcher import Bing
 from loger import makelog,setting
 from multiprocessing import Pool, Queue, TimeoutError, cpu_count
 from multiprocessing.managers import BaseManager
-setting(4)
+setting(2)
 
 
 class RawRes:
